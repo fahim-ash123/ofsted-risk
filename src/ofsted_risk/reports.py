@@ -1,11 +1,13 @@
 """Downloading the previous inspection report for each labelled school.
 
-Each school's page on reports.ofsted.gov.uk lists its reports as a
-timeline. Every entry holds the inspection date in a ``timeline__date``
-paragraph, followed by a link to the PDF on files.ofsted.gov.uk whose
-visible text names the report type, such as "School inspection". The
-previous inspection start date in the label table is matched against the
-timeline date to pick the right PDF.
+Each school's page on reports.ofsted.gov.uk lists its reports, each with a
+link to the PDF on files.ofsted.gov.uk. Older pages give the inspection
+date in a ``timeline__date`` paragraph before the link, while pages updated
+for report cards put the date inside the link text. Both layouts are read.
+The previous inspection start date in the label table is matched against
+that date to pick the right PDF. A page with no readable report link is
+recorded as ``empty_page`` and retried on the next run; when a report has
+several records after retries, the latest one counts.
 
 Only the extracted page text is kept, one JSON line per report. The
 project folder on Deepnote is a slow network drive, so lines are written
@@ -22,7 +24,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
-from html.parser import HTMLParser
+from html import unescape
 from pathlib import Path
 from typing import Iterable, List, Optional, Set
 
@@ -53,110 +55,69 @@ class ReportLink:
     kind: str
 
 
-def _classes(attrs: list) -> List[str]:
-    """Return the CSS classes of an element.
+# Report links as they appear once the page is unescaped. Pages exist in
+# two layouts: older pages put the inspection date in a preceding
+# ``p.timeline__date`` paragraph, while pages updated for report cards put a
+# ``<time>`` element inside the link itself. Some pages also repeat the list
+# inside an HTML-escaped template, so the page is unescaped before matching
+# and repeated file ids are kept once.
+ANCHOR = re.compile(
+    r'<a\b[^>]*class="[^"]*publication-link[^"]*"[^>]*href="[^"]*files\.ofsted\.gov\.uk/v1/file/(\d+)"[^>]*>(.*?)</a>',
+    re.DOTALL,
+)
+TIMELINE_DATE = re.compile(r'class="[^"]*timeline__date[^"]*"[^>]*>\s*<time[^>]*>([^<]+)</time>')
+INNER_DATE = re.compile(r"<time[^>]*>([^<]+)</time>\s*:\s*([^:<]+?)\s*:")
+TAG = re.compile(r"<[^>]+>")
+HIDDEN = re.compile(r'<span[^>]*class="[^"]*nonvisual[^"]*"[^>]*>.*?</span>', re.DOTALL)
+
+
+def _parse_date(text: str) -> Optional[date]:
+    """Parse a timeline date such as "12 September 2023".
 
     Args:
-        attrs: Element attributes as name and value pairs.
+        text: Date text from the page.
 
     Returns:
-        The class names, empty if the element has none.
+        The date, or None if the text is not a date in that form.
     """
-    return (dict(attrs).get("class") or "").split()
-
-
-class _TimelineCollector(HTMLParser):
-    """Walk the report timeline, pairing each PDF link with its date.
-
-    The date sits in a ``<time>`` element inside ``p.timeline__date``.
-    Another ``<time>`` gives the publication date further on, so only the
-    one inside that paragraph is used. Text inside ``span.nonvisual`` is a
-    screen-reader duplicate and is left out of the report type.
-    """
-
-    def __init__(self) -> None:
-        """Start with no date and no links collected."""
-        super().__init__()
-        self.links: List[tuple] = []
-        self._in_date_paragraph = False
-        self._in_date_time = False
-        self._date_text: List[str] = []
-        self._current_date: Optional[str] = None
-        self._href: Optional[str] = None
-        self._kind: List[str] = []
-        self._hidden_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list) -> None:
-        """Track entry into the date paragraph, report links and hidden text.
-
-        Args:
-            tag: Element name.
-            attrs: Element attributes as name and value pairs.
-        """
-        if tag == "p" and "timeline__date" in _classes(attrs):
-            self._in_date_paragraph = True
-        elif tag == "time" and self._in_date_paragraph:
-            self._in_date_time = True
-            self._date_text = []
-        elif tag == "a":
-            self._href = dict(attrs).get("href")
-            self._kind = []
-            self._hidden_depth = 0
-        elif tag == "span" and self._href is not None and (self._hidden_depth or "nonvisual" in _classes(attrs)):
-            self._hidden_depth += 1
-
-    def handle_data(self, data: str) -> None:
-        """Keep date text and the visible text of the current link.
-
-        Args:
-            data: Text content.
-        """
-        if self._in_date_time:
-            self._date_text.append(data)
-        elif self._href is not None and not self._hidden_depth:
-            self._kind.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        """Close the date, hidden text or link, storing finished links.
-
-        Args:
-            tag: Element name.
-        """
-        if tag == "time" and self._in_date_time:
-            self._in_date_time = False
-            self._current_date = " ".join("".join(self._date_text).split())
-        elif tag == "p" and self._in_date_paragraph:
-            self._in_date_paragraph = False
-        elif tag == "span" and self._hidden_depth:
-            self._hidden_depth -= 1
-        elif tag == "a" and self._href is not None:
-            kind = " ".join("".join(self._kind).split())
-            self.links.append((self._href, self._current_date, kind))
-            self._href = None
+    try:
+        return datetime.strptime(" ".join(text.split()), "%d %B %Y").date()
+    except ValueError:
+        return None
 
 
 def parse_report_links(html: str) -> List[ReportLink]:
-    """Extract every dated report link from a school's page.
+    """Extract every dated report link from a school's page, in either layout.
 
     Args:
         html: Page source from reports.ofsted.gov.uk.
 
     Returns:
-        One entry per PDF link that follows a timeline date. Other links,
-        such as navigation, are ignored.
+        One entry per distinct PDF link that has an inspection date, in
+        page order. Links without a recognisable date are ignored.
     """
-    collector = _TimelineCollector()
-    collector.feed(html)
-    links = []
-    for href, listed, kind in collector.links:
-        file_match = FILE_LINK.search(href or "")
-        if not file_match or not listed:
+    page = unescape(html)
+    timeline_dates = [(match.start(), match.group(1)) for match in TIMELINE_DATE.finditer(page)]
+    links: List[ReportLink] = []
+    seen: Set[str] = set()
+    for anchor in ANCHOR.finditer(page):
+        file_id, inner = anchor.group(1), anchor.group(2)
+        if file_id in seen:
             continue
-        try:
-            inspection_date = datetime.strptime(listed, "%d %B %Y").date()
-        except ValueError:
+        inner_date = INNER_DATE.search(inner)
+        if inner_date:
+            listed, kind = inner_date.group(1), inner_date.group(2)
+        else:
+            earlier = [text for position, text in timeline_dates if position < anchor.start()]
+            if not earlier:
+                continue
+            listed = earlier[-1]
+            kind = TAG.sub(" ", HIDDEN.sub(" ", inner))
+        inspection_date = _parse_date(listed)
+        if inspection_date is None:
             continue
-        links.append(ReportLink(file_match.group(1), inspection_date, kind))
+        seen.add(file_id)
+        links.append(ReportLink(file_id, inspection_date, " ".join(kind.split())))
     return links
 
 
@@ -208,20 +169,29 @@ def report_targets(label_tables: Iterable[pd.DataFrame], first_year: str) -> pd.
     return targets.reset_index(drop=True)
 
 
+RETRY_STATUSES = ("empty_page", "page_error", "pdf_error")
+
+
 def completed_keys(output: Path) -> Set[str]:
-    """Read which reports an earlier run has already recorded.
+    """Read which reports an earlier run has settled.
 
     Args:
         output: JSON Lines file written by ``download_reports``.
 
     Returns:
-        The report keys present, whatever their status, so failed lookups
-        are not retried on every restart. Delete their lines to retry them.
+        Report keys with a final status ("ok" or "no_match"). Keys whose
+        latest record is a retryable failure are left out, so the next run
+        tries them again.
     """
     if not output.exists():
         return set()
+    latest = {}
     with output.open(encoding="utf-8") as handle:
-        return {json.loads(line)["report_key"] for line in handle if line.strip()}
+        for line in handle:
+            if line.strip():
+                record = json.loads(line)
+                latest[record["report_key"]] = record["status"]
+    return {key for key, status in latest.items() if status not in RETRY_STATUSES}
 
 
 def restore_from_shards(shard_dir: Path, local: Path) -> int:
@@ -360,8 +330,13 @@ def _fetch_one(session, row, delay: float) -> dict:
         return {**record, "status": "page_error", "error": str(error)[:200]}
 
     links = parse_report_links(page.text)
+    record.update(page_url=page.url, links_found=len(links))
+    if not links:
+        # No dated report link at all points to an unreadable page, not a
+        # date mismatch, so it is recorded separately and retried later.
+        return {**record, "status": "empty_page"}
     chosen, match = select_report(links, start)
-    record.update(page_url=page.url, links_found=len(links), match=match)
+    record["match"] = match
     if chosen is None:
         return {**record, "status": "no_match"}
 
