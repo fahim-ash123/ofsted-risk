@@ -1,6 +1,6 @@
 [project]
 name = "ofsted-risk"
-version = "0.1.2"
+version = "0.1.3"
 description = "Predicting decline risk at the next Ofsted inspection of Good schools"
 requires-python = ">=3.9"
 dependencies = ["pandas>=2.0", "requests>=2.31", "pypdf>=4.0"]

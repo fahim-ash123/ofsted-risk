@@ -1,19 +1,24 @@
 """Downloading the previous inspection report for each labelled school.
 
-Each school's page on reports.ofsted.gov.uk lists every report as a link
-whose text starts with the inspection date, for example "17 May 2022:
-School inspection: (PDF) ...". The previous inspection start date in the
-label table is matched against that date to pick the right PDF.
+Each school's page on reports.ofsted.gov.uk lists its reports as a
+timeline. Every entry holds the inspection date in a ``timeline__date``
+paragraph, followed by a link to the PDF on files.ofsted.gov.uk whose
+visible text names the report type, such as "School inspection". The
+previous inspection start date in the label table is matched against the
+timeline date to pick the right PDF.
 
-Only the extracted page text is stored, one JSON line per report, so the
-run can stop and resume at any point and cleaning can be redone later
-without downloading again. Requests are spaced out because the site's
-terms ask users not to restrict others' use of it.
+Only the extracted page text is kept, one JSON line per report. The
+project folder on Deepnote is a slow network drive, so lines are written
+to the machine's local disk and copied to the project folder in batches as
+small shard files. The run can stop and resume at any point, and cleaning
+can be redone later without downloading again. Requests are spaced out
+because the site's terms ask users not to restrict others' use of it.
 """
 
 import io
 import json
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -25,7 +30,6 @@ import pandas as pd
 
 PROVIDER_URL = "https://reports.ofsted.gov.uk/inspection-reports/find-inspection-report/provider/ELS/{urn}"
 FILE_LINK = re.compile(r"files\.ofsted\.gov\.uk/v1/file/(\d+)")
-LINK_TEXT = re.compile(r"^\s*(\d{1,2} [A-Za-z]+ \d{4}):\s*([^:]+?):")
 USER_AGENT = "NU London apprenticeship coursework (Ofsted risk study); low-rate research use"
 
 # Listed dates occasionally differ from the inspection data by a day or
@@ -40,8 +44,8 @@ class ReportLink:
 
     Attributes:
         file_id: Identifier in the files.ofsted.gov.uk address.
-        inspection_date: Date the listing gives for the inspection.
-        kind: Report type as listed, such as "Short inspection".
+        inspection_date: Date the timeline gives for the inspection.
+        kind: Report type as listed, such as "School inspection".
     """
 
     file_id: str
@@ -49,67 +53,110 @@ class ReportLink:
     kind: str
 
 
-class _AnchorCollector(HTMLParser):
-    """Collect the address and visible text of every link on a page."""
+def _classes(attrs: list) -> List[str]:
+    """Return the CSS classes of an element.
+
+    Args:
+        attrs: Element attributes as name and value pairs.
+
+    Returns:
+        The class names, empty if the element has none.
+    """
+    return (dict(attrs).get("class") or "").split()
+
+
+class _TimelineCollector(HTMLParser):
+    """Walk the report timeline, pairing each PDF link with its date.
+
+    The date sits in a ``<time>`` element inside ``p.timeline__date``.
+    Another ``<time>`` gives the publication date further on, so only the
+    one inside that paragraph is used. Text inside ``span.nonvisual`` is a
+    screen-reader duplicate and is left out of the report type.
+    """
 
     def __init__(self) -> None:
-        """Start with no links collected."""
+        """Start with no date and no links collected."""
         super().__init__()
-        self.anchors: List[tuple] = []
+        self.links: List[tuple] = []
+        self._in_date_paragraph = False
+        self._in_date_time = False
+        self._date_text: List[str] = []
+        self._current_date: Optional[str] = None
         self._href: Optional[str] = None
-        self._text: List[str] = []
+        self._kind: List[str] = []
+        self._hidden_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
-        """Begin recording when a link opens.
+        """Track entry into the date paragraph, report links and hidden text.
 
         Args:
             tag: Element name.
             attrs: Element attributes as name and value pairs.
         """
-        if tag == "a":
+        if tag == "p" and "timeline__date" in _classes(attrs):
+            self._in_date_paragraph = True
+        elif tag == "time" and self._in_date_paragraph:
+            self._in_date_time = True
+            self._date_text = []
+        elif tag == "a":
             self._href = dict(attrs).get("href")
-            self._text = []
+            self._kind = []
+            self._hidden_depth = 0
+        elif tag == "span" and self._href is not None and (self._hidden_depth or "nonvisual" in _classes(attrs)):
+            self._hidden_depth += 1
 
     def handle_data(self, data: str) -> None:
-        """Keep text that sits inside the current link.
+        """Keep date text and the visible text of the current link.
 
         Args:
             data: Text content.
         """
-        if self._href is not None:
-            self._text.append(data)
+        if self._in_date_time:
+            self._date_text.append(data)
+        elif self._href is not None and not self._hidden_depth:
+            self._kind.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        """Store the finished link.
+        """Close the date, hidden text or link, storing finished links.
 
         Args:
             tag: Element name.
         """
-        if tag == "a" and self._href is not None:
-            self.anchors.append((self._href, " ".join("".join(self._text).split())))
+        if tag == "time" and self._in_date_time:
+            self._in_date_time = False
+            self._current_date = " ".join("".join(self._date_text).split())
+        elif tag == "p" and self._in_date_paragraph:
+            self._in_date_paragraph = False
+        elif tag == "span" and self._hidden_depth:
+            self._hidden_depth -= 1
+        elif tag == "a" and self._href is not None:
+            kind = " ".join("".join(self._kind).split())
+            self.links.append((self._href, self._current_date, kind))
             self._href = None
 
 
 def parse_report_links(html: str) -> List[ReportLink]:
-    """Extract every report link from a school's page.
+    """Extract every dated report link from a school's page.
 
     Args:
         html: Page source from reports.ofsted.gov.uk.
 
     Returns:
-        One entry per PDF link whose text starts with a date. Links that do
-        not follow the pattern, such as navigation, are ignored.
+        One entry per PDF link that follows a timeline date. Other links,
+        such as navigation, are ignored.
     """
-    collector = _AnchorCollector()
+    collector = _TimelineCollector()
     collector.feed(html)
     links = []
-    for href, text in collector.anchors:
+    for href, listed, kind in collector.links:
         file_match = FILE_LINK.search(href or "")
-        text_match = LINK_TEXT.match(text)
-        if not file_match or not text_match:
+        if not file_match or not listed:
             continue
-        listed = datetime.strptime(text_match.group(1), "%d %B %Y").date()
-        links.append(ReportLink(file_match.group(1), listed, text_match.group(2).strip()))
+        try:
+            inspection_date = datetime.strptime(listed, "%d %B %Y").date()
+        except ValueError:
+            continue
+        links.append(ReportLink(file_match.group(1), inspection_date, kind))
     return links
 
 
@@ -175,6 +222,56 @@ def completed_keys(output: Path) -> Set[str]:
         return set()
     with output.open(encoding="utf-8") as handle:
         return {json.loads(line)["report_key"] for line in handle if line.strip()}
+
+
+def restore_from_shards(shard_dir: Path, local: Path) -> int:
+    """Rebuild the local results file from shards saved in the project folder.
+
+    After a machine restart the local disk is empty, so earlier progress is
+    copied back before the run resumes. An existing local file is kept if
+    it already holds at least as many lines as the shards.
+
+    Args:
+        shard_dir: Project folder holding ``part_*.jsonl`` shard files.
+        local: Results file on the machine's local disk.
+
+    Returns:
+        The number of records available locally after restoring.
+    """
+    shards = sorted(shard_dir.glob("part_*.jsonl")) if shard_dir.exists() else []
+    saved = [line for shard in shards for line in shard.read_text(encoding="utf-8").splitlines() if line.strip()]
+    existing = local.read_text(encoding="utf-8").splitlines() if local.exists() else []
+    if len(saved) > len(existing):
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text("".join(f"{line}\n" for line in saved), encoding="utf-8")
+        return len(saved)
+    return len(existing)
+
+
+def save_shard(local: Path, start_line: int, shard_dir: Path) -> Optional[Path]:
+    """Copy records added since ``start_line`` into a new shard file.
+
+    Writing one new file per batch keeps the number of slow operations on
+    the project drive small, and never rewrites what is already saved.
+
+    Args:
+        local: Results file on the machine's local disk.
+        start_line: Number of lines already saved in earlier shards.
+        shard_dir: Project folder to write the shard into.
+
+    Returns:
+        The shard written, or None if there were no new records.
+    """
+    lines = local.read_text(encoding="utf-8").splitlines()[start_line:] if local.exists() else []
+    if not lines:
+        return None
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    number = len(list(shard_dir.glob("part_*.jsonl"))) + 1
+    shard = shard_dir / f"part_{number:04d}.jsonl"
+    temporary = shard.with_suffix(".tmp")
+    temporary.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    shutil.move(str(temporary), str(shard))
+    return shard
 
 
 def extract_pages(pdf_bytes: bytes) -> List[str]:
