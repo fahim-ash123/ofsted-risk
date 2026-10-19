@@ -1,0 +1,7 @@
+# Raw and derived data are rebuilt from the manifest, not versioned.
+data/raw/
+data/interim/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
