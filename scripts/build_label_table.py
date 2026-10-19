@@ -19,6 +19,23 @@ import pandas as pd
 from ofsted_risk import checks, config, ingest, labels
 
 
+def to_native(value):
+    """Convert numpy scalars so the report can be written as JSON.
+
+    Args:
+        value: An object the JSON encoder could not serialise.
+
+    Returns:
+        The equivalent built-in Python value.
+
+    Raises:
+        TypeError: If the value has no built-in equivalent.
+    """
+    if hasattr(value, "item"):
+        return value.item()
+    raise TypeError(f"Cannot serialise {type(value).__name__}")
+
+
 def parse_args() -> argparse.Namespace:
     """Read command-line options.
 
@@ -74,7 +91,7 @@ def main() -> None:
 
     pd.concat(primary_tables).to_csv(args.out_dir / "label_table.csv", index=False)
     pd.concat(sensitivity_tables).to_csv(args.out_dir / "label_table_with_predecessors.csv", index=False)
-    (args.out_dir / "data_quality.json").write_text(json.dumps(report, indent=2))
+    (args.out_dir / "data_quality.json").write_text(json.dumps(report, indent=2, default=to_native))
 
     summary = pd.DataFrame({year: values["class_balance"] for year, values in report["years"].items()}).T
     print(summary.to_string())

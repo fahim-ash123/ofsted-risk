@@ -1,4 +1,7 @@
-pandas>=2.0
-requests>=2.31
-pypdf>=4.0
-pytest>=7
+# Pinned to the versions on the Deepnote machine (Python 3.13 image) so
+# results are reproducible and nothing is upgraded on install.
+pandas==2.2.3
+numpy==2.4.6
+requests==2.34.2
+pypdf==6.21.1
+pytest==9.1.1

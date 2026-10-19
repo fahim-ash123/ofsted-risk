@@ -145,12 +145,17 @@ def repair_masked_previous_numbers(frame: pd.DataFrame, snapshot: pd.DataFrame) 
         ``attrs["masked_previous_numbers"]``.
     """
     repaired = frame.copy()
-    masked = repaired["previous_inspection_number"].astype("string").str.fullmatch(MASKED_VALUE).fillna(False)
+    masked = (
+        repaired["previous_inspection_number"].astype("string").str.fullmatch(MASKED_VALUE).fillna(False).to_numpy(bool)
+    )
     lookup = snapshot.set_index("urn")[["inspection_number_of_latest_graded_inspection", "inspection_start_date"]]
     candidates = lookup.reindex(repaired.loc[masked, "urn"])
     candidates.index = repaired.index[masked]
     same_inspection = (
-        candidates["inspection_start_date"].eq(repaired.loc[masked, "previous_inspection_start_date"]).fillna(False)
+        candidates["inspection_start_date"]
+        .eq(repaired.loc[masked, "previous_inspection_start_date"])
+        .fillna(False)
+        .astype(bool)
     )
     restored = candidates["inspection_number_of_latest_graded_inspection"].where(same_inspection)
     repaired.loc[masked, "previous_inspection_number"] = restored

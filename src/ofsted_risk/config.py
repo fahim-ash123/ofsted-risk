@@ -61,7 +61,7 @@ ABSENCE_PERIOD = {"2021/22": "202021", "2022/23": "202122", "2023/24": "202223",
 
 # These years count COVID non-attendance as possible sessions but not as
 # absence, so their rates are not comparable with other years.
-COVID_AFFECTED_PERIODS = frozenset({"202021", "202122"})
+COVID_AFFECTED_PERIODS = ("202021", "202122")
 
 GIAS_FILE = Path("gias") / "edubasealldata20261015.csv"
 GIAS_LINKS_FILE = Path("gias") / "links_edubasealldata20261015.csv"
@@ -88,17 +88,17 @@ OFSTED_ENCODING = "cp1252"
 # Inspection types that give a comparable decline or no-decline outcome for
 # a previously Good school. Monitoring and no-formal-designation visits are
 # left out because they do not produce such a judgement.
-INCLUDED_INSPECTION_TYPES = frozenset(
-    {"S5 Inspection", "Section 8 (did not convert)", "Section 8 conversion"}
-)
+INCLUDED_INSPECTION_TYPES = ("S5 Inspection", "Section 8 (did not convert)", "Section 8 conversion")
 
 # Nursery schools have no compulsory-age absence data and PRUs follow
 # different inspection dynamics, so both are out of the primary analysis.
-EXCLUDED_PHASES = frozenset({"Nursery", "PRU"})
+EXCLUDED_PHASES = ("Nursery", "PRU")
 
 STANDING_GRADE_GOOD = 2
 
 CONCERNS_OUTCOME = "School remains Good (Concerns) - S5 Next"
-NO_DECLINE_OUTCOMES = frozenset({"School remains Good", "School remains Good (Improving) - S5 Next"})
+NO_DECLINE_OUTCOMES = ("School remains Good", "School remains Good (Improving) - S5 Next")
 
-VALID_GRADES = frozenset({"1", "2", "3", "4"})
+# Tuples rather than sets, because pandas ``isin`` handles list-likes most
+# consistently across versions.
+VALID_GRADES = ("1", "2", "3", "4")

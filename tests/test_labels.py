@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from conftest import make_inspection, make_snapshot_row
+from factories import make_inspection, make_snapshot_row
 from ofsted_risk.labels import (
     OUTCOME,
     RELATES,
