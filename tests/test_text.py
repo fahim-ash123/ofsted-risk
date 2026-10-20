@@ -8,6 +8,15 @@ import pandas as pd
 
 from ofsted_risk.text import build_text_table, clean_section, find_improvement_section, report_year
 
+REPORT_2011 = """What does the school need to do to improve further?
+ Strengthen teaching so that the level of challenge and progress in lessons is consistently good or better.
+ Extend the variety of opportunities across the curriculum for pupils to write for a range of purposes.
+Outcomes for individuals and groups of pupils 1
+All groups of pupils enjoy learning and their achievement is good.
+
+Inspection judgements
+Overall effectiveness: how good is the school? 2"""
+
 REPORT_2013 = """This is a good school.
 What does the school need to do to improve further?
 \uf0b7 Improve the quality of teaching from good to outstanding by ensuring that:
@@ -56,6 +65,7 @@ You can use Ofsted Parent View to give Ofsted your opinion."""
 def test_each_framework_layout_yields_only_the_improvement_points():
     """All four layouts end at the right heading and keep only the section."""
     expected = {
+        REPORT_2011: ("outcomes for individuals and groups of pupils", "write for a range of purposes", "enjoy learning"),
         REPORT_2013: ("inspection judgements", "Improve the quality of teaching", "achievement of pupils"),
         REPORT_2017: ("inspection judgements", "Strengthen outcomes further", "leadership and management"),
         REPORT_2019: ("inspection judgements", "Strengthen the impact of leadership", "steered the school"),

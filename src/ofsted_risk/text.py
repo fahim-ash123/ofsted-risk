@@ -3,9 +3,11 @@
 Every framework since 2010 includes a section headed "What does the school
 need to do to improve (further)?". It is the inspector's own statement of
 where the school was weakest, so it is the text the models use. The section
-ends at a framework-specific heading: "Inspection judgements" in reports up
-to 2019, "How can I feed back my views?" under the 2019 framework, and
-"School details" or "Information about this inspection" as later fallbacks.
+ends at a framework-specific heading: "Outcomes for individuals and groups
+of pupils" in reports from the framework used until mid-2012, "Inspection
+judgements" from then until 2019, "How can I feed back my views?" under the
+2019 framework, and "School details" or "Information about this inspection"
+as later fallbacks. The earliest of these after the heading is used.
 
 Cleaning removes what would let a model recognise a school instead of
 learning from what inspectors wrote: page headers carrying the school's
@@ -22,6 +24,7 @@ START_HEADINGS = (
     "what the school needs to do to improve",
 )
 END_MARKERS = (
+    "outcomes for individuals and groups of pupils",
     "inspection judgements",
     "how can i feed back my views",
     "school details",
