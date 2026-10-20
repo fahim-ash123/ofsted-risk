@@ -31,6 +31,24 @@ END_MARKERS = (
     "information about this inspection",
 )
 
+def _flexible(phrase: str) -> re.Pattern:
+    """Compile a phrase so that any run of whitespace may separate its words.
+
+    PDF text extraction often breaks a heading across lines, so a plain
+    substring search would miss "need to do to" followed by a line break.
+
+    Args:
+        phrase: Words separated by single spaces.
+
+    Returns:
+        A case-insensitive pattern matching the phrase across line breaks.
+    """
+    return re.compile(r"\s+".join(re.escape(word) for word in phrase.split()), re.IGNORECASE)
+
+
+START_PATTERNS = tuple(_flexible(heading) for heading in START_HEADINGS)
+END_PATTERNS = tuple((marker, _flexible(marker)) for marker in END_MARKERS)
+
 # Used only when no end marker follows the heading, so that one malformed
 # report cannot pull pages of unrelated text into the model.
 MAX_SECTION_CHARACTERS = 4000
@@ -55,18 +73,13 @@ def find_improvement_section(text: str) -> tuple:
         that closed it, and whether the length cap was used instead. The
         section is None, with marker "no_heading", if no heading is found.
     """
-    lowered = text.lower()
-    starts = [lowered.find(heading) for heading in START_HEADINGS if heading in lowered]
+    starts = [match.start() for pattern in START_PATTERNS if (match := pattern.search(text))]
     if not starts:
         return None, "no_heading", False
     start = min(starts)
     question = text.find("?", start)
     body_start = question + 1 if 0 <= question - start < 120 else start
-    ends = [
-        (position, marker)
-        for marker in END_MARKERS
-        if (position := lowered.find(marker, body_start)) >= 0
-    ]
+    ends = [(match.start(), marker) for marker, pattern in END_PATTERNS if (match := pattern.search(text, body_start))]
     if ends:
         end, marker = min(ends)
         return text[body_start:end], marker, False

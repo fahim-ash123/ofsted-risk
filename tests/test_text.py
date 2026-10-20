@@ -123,3 +123,13 @@ def test_report_year_handles_missing_dates():
     assert report_year("2017-09-12") == "2017"
     assert report_year(float("nan")) is None
     assert report_year(None) is None
+
+
+def test_headings_split_across_lines_are_still_found():
+    """A heading broken over two lines by PDF extraction is still recognised."""
+    report = "What does the school need to do to\nimprove further?\n Raise attainment in writing.\nInspection\njudgements\nMore text"
+
+    section, marker, _ = find_improvement_section(report)
+
+    assert marker == "inspection judgements"
+    assert clean_section(section)[0] == "Raise attainment in writing."
