@@ -4,8 +4,9 @@ Every framework since 2010 includes a section headed "What does the school
 need to do to improve (further)?". It is the inspector's own statement of
 where the school was weakest, so it is the text the models use. The section
 ends at a framework-specific heading: "Outcomes for individuals and groups
-of pupils" in reports from the framework used until mid-2012, "Inspection
-judgements" from then until 2019, "How can I feed back my views?" under the
+of pupils" in reports from the framework used until the end of 2011, "Main
+report" in reports from the January 2012 framework, "Inspection
+judgements" from September 2012 until 2019, "How can I feed back my views?" under the
 2019 framework, and "School details" or "Information about this inspection"
 as later fallbacks. The earliest of these after the heading is used.
 
@@ -19,12 +20,16 @@ from typing import Iterable, Optional
 
 import pandas as pd
 
-START_HEADINGS = (
-    "what does the school need to do to improve",
-    "what the school needs to do to improve",
+# The noun varies with the provider: "school", "academy", "federation" and
+# so on. Up to three words are allowed so that "the school and academy" and
+# similar wordings are also recognised.
+START_PATTERNS = (
+    re.compile(r"what\s+does\s+the\s+(?:[\w’'-]+\s+){1,3}?need\s+to\s+do\s+to\s+improve", re.IGNORECASE),
+    re.compile(r"what\s+the\s+(?:[\w’'-]+\s+){1,3}?needs\s+to\s+do\s+to\s+improve", re.IGNORECASE),
 )
 END_MARKERS = (
     "outcomes for individuals and groups of pupils",
+    "main report",
     "inspection judgements",
     "how can i feed back my views",
     "school details",
@@ -46,7 +51,6 @@ def _flexible(phrase: str) -> re.Pattern:
     return re.compile(r"\s+".join(re.escape(word) for word in phrase.split()), re.IGNORECASE)
 
 
-START_PATTERNS = tuple(_flexible(heading) for heading in START_HEADINGS)
 END_PATTERNS = tuple((marker, _flexible(marker)) for marker in END_MARKERS)
 
 # Used only when no end marker follows the heading, so that one malformed
@@ -57,6 +61,12 @@ HEADER_LINE = re.compile(r"^\s*Inspection report\s*:", re.IGNORECASE)
 PAGE_LINE = re.compile(r"^\s*(Page\s+)?\d+\s+of\s+\d+\s*$", re.IGNORECASE)
 DATE_LINE = re.compile(r"^\s*\d{1,2}(\s*[–-]\s*\d{1,2})?\s+[A-Za-z]+\s+\d{4}(\s+\d+(\s+of\s+\d+)?)?\s*$")
 AUDIENCE_NOTE = re.compile(r"\(Information for the school and appropriate authority\)", re.IGNORECASE)
+# Page footer repeated on every page of reports from the 2012 framework.
+GRADES_NOTE = re.compile(
+    r"Inspection\s+grades:\s*1\s+is\s+outstanding.*?Please\s+turn\s+to\s+the\s+glossary\s+for\s+a\s+description"
+    r"\s+of\s+the\s+grades\s+and\s+inspection\s+terms",
+    re.IGNORECASE | re.DOTALL,
+)
 TITLED_NAME = re.compile(r"\b(?:Mr|Mrs|Ms|Miss|Dr)\.?\s+[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?")
 # PDF bullets arrive as characters from the Unicode private-use area.
 BULLET = re.compile(r"[\ue000-\uf8ff•]")
@@ -101,7 +111,7 @@ def clean_section(section: str) -> tuple:
         for line in section.splitlines()
         if not (HEADER_LINE.match(line) or PAGE_LINE.match(line) or DATE_LINE.match(line))
     ]
-    joined = AUDIENCE_NOTE.sub(" ", "\n".join(kept))
+    joined = GRADES_NOTE.sub(" ", AUDIENCE_NOTE.sub(" ", "\n".join(kept)))
     joined, names_removed = TITLED_NAME.subn("[name]", joined)
     joined = BULLET.sub(" ", joined).replace("– ", " ")
     return " ".join(joined.split()), names_removed

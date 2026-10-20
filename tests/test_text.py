@@ -17,6 +17,21 @@ All groups of pupils enjoy learning and their achievement is good.
 Inspection judgements
 Overall effectiveness: how good is the school? 2"""
 
+REPORT_2012 = """What does the school need to do to improve further?
+Inspection grades: 1 is outstanding, 2 is good, 3 is satisfactory,
+and 4 is inadequate
+Please turn to the glossary for a description of the grades and inspection terms
+ By June 2013, raise attainment and accelerate progress in writing at Key Stage 2.
+Main report
+Achievement of pupils
+Children enter the Early Years Foundation Stage at the broadly expected starting points."""
+
+REPORT_ACADEMY = """This is a good academy
+What does the academy need to do to improve further?
+ Make marking consistent in Key Stage 3 and the sixth form.
+Inspection judgements
+The achievement of pupils is good"""
+
 REPORT_2013 = """This is a good school.
 What does the school need to do to improve further?
 \uf0b7 Improve the quality of teaching from good to outstanding by ensuring that:
@@ -66,6 +81,8 @@ def test_each_framework_layout_yields_only_the_improvement_points():
     """All four layouts end at the right heading and keep only the section."""
     expected = {
         REPORT_2011: ("outcomes for individuals and groups of pupils", "write for a range of purposes", "enjoy learning"),
+        REPORT_2012: ("main report", "accelerate progress in writing", "broadly expected"),
+        REPORT_ACADEMY: ("inspection judgements", "Make marking consistent", "achievement of pupils"),
         REPORT_2013: ("inspection judgements", "Improve the quality of teaching", "achievement of pupils"),
         REPORT_2017: ("inspection judgements", "Strengthen outcomes further", "leadership and management"),
         REPORT_2019: ("inspection judgements", "Strengthen the impact of leadership", "steered the school"),
@@ -81,9 +98,9 @@ def test_each_framework_layout_yields_only_the_improvement_points():
 
 def test_cleaning_removes_school_identity_page_numbers_and_notes():
     """Headers naming the school, page numbers and audience notes are removed."""
-    for report in (REPORT_2013, REPORT_2017, REPORT_2019, REPORT_2020):
+    for report in (REPORT_2012, REPORT_2013, REPORT_2017, REPORT_2019, REPORT_2020):
         cleaned, _ = clean_section(find_improvement_section(report)[0])
-        for leaked in ("Inspection report", "Twyford", "Wildground", "Kingsbury", "of 11", "appropriate authority"):
+        for leaked in ("Inspection report", "Twyford", "Wildground", "Kingsbury", "of 11", "appropriate authority", "glossary"):
             assert leaked not in cleaned
 
 
