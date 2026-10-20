@@ -31,9 +31,12 @@ NUMERIC_FEATURES = (
     "census_pct_eal",
     "absence_overall_pct",
     "absence_persistent_pct",
-    "absence_covid_affected",
     "text_characters",
 )
+# Kept in the table for analysis, not used as a feature: both training years
+# draw on COVID-affected absence (2020/21 and 2021/22) and the test year does
+# not, so the flag is constant within each split and carries no signal.
+ANALYSIS_COLUMNS = ("absence_covid_affected",)
 TEXT_FEATURE = "improvement_text"
 
 
@@ -108,7 +111,7 @@ def build_model_table(
     table = table.merge(text_rows, on="report_key", how="left", validate="many_to_one")
     table["text_characters"] = table[TEXT_FEATURE].str.len().fillna(0).astype(int)
 
-    columns = [*ID_COLUMNS, *TARGET_COLUMNS, *CATEGORICAL_FEATURES, *NUMERIC_FEATURES, TEXT_FEATURE]
+    columns = [*ID_COLUMNS, *TARGET_COLUMNS, *CATEGORICAL_FEATURES, *NUMERIC_FEATURES, *ANALYSIS_COLUMNS, TEXT_FEATURE]
     if len(table) != len(labels):
         raise ValueError(f"Join changed the row count from {len(labels)} to {len(table)}")
     return table[columns]

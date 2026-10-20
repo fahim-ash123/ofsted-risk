@@ -102,3 +102,14 @@ NO_DECLINE_OUTCOMES = ("School remains Good", "School remains Good (Improving) -
 # Tuples rather than sets, because pandas ``isin`` handles list-likes most
 # consistently across versions.
 VALID_GRADES = ("1", "2", "3", "4")
+
+# Modelling settings, fixed so every run reproduces the same results.
+RANDOM_STATE = 42
+CV_FOLDS = 5
+BOOTSTRAP_RESAMPLES = 1000
+# Share of the test year a scheduler could prioritise, used for precision
+# and recall at a fixed inspection capacity and for the fairness audit.
+CAPACITY_SHARES = (0.10, 0.20)
+FAIRNESS_CAPACITY = 0.20
+SENTENCE_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+THEME_COUNT = 8
