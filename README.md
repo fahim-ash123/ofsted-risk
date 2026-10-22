@@ -1,6 +1,6 @@
 # What the Previous Report Cannot Tell
 
-Predicting which schools judged Good at their last graded Ofsted inspection are at risk of decline at their next inspection, using only information available before that inspection. This is the code behind my NCHNAP691 Implementing Data Science summative assessment (NU London, BSc Data Science).
+Predicting which schools judged Good at their last graded Ofsted inspection are at risk of decline at their next inspection, using only information available before that inspection. This repository holds the code for my summative assessment in Implementing Data Science (NCHNAP691), part of my BSc Data Science at NU London.
 
 The project compares basic classifiers on school context (logistic regression and gradient boosting) with an NLP model on the text of the previous inspection report (sentence embeddings with logistic regression, plus a TF-IDF baseline), and a late fusion of the two. Models are trained on 2021/22 and 2022/23 and tested once on 2023/24.
 
